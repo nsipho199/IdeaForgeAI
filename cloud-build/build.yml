@@ -1,0 +1,85 @@
+name: IdeaForge Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_name:
+        description: 'Project name'
+        required: false
+        default: 'app'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew 2>/dev/null || true
+
+      - name: Detect project structure
+        id: detect
+        run: |
+          if [ -f "projects/*/build.gradle.kts" ] || [ -f "projects/*/settings.gradle.kts" ]; then
+            echo "PROJECT_DIR=$(ls -d projects/*/ | head -1)" >> $GITHUB_OUTPUT
+            echo "FOUND=true" >> $GITHUB_OUTPUT
+          else
+            echo "FOUND=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup project if needed
+        if: steps.detect.outputs.FOUND == 'true'
+        run: |
+          PROJECT_DIR="${{ steps.detect.outputs.PROJECT_DIR }}"
+          cd "$PROJECT_DIR"
+          if [ ! -f "gradlew" ]; then
+            gradle wrapper --gradle-version 8.9
+          fi
+          chmod +x gradlew
+
+      - name: Build Debug APK
+        if: steps.detect.outputs.FOUND == 'true'
+        working-directory: ${{ steps.detect.outputs.PROJECT_DIR }}
+        run: ./gradlew assembleDebug --no-daemon --stacktrace || true
+
+      - name: Build Release APK
+        if: steps.detect.outputs.FOUND == 'true'
+        working-directory: ${{ steps.detect.outputs.PROJECT_DIR }}
+        run: ./gradlew assembleRelease --no-daemon --stacktrace || true
+
+      - name: Find APKs
+        if: steps.detect.outputs.FOUND == 'true'
+        id: find_apk
+        run: |
+          PROJECT_DIR="${{ steps.detect.outputs.PROJECT_DIR }}"
+          APK_DIR="$PROJECT_DIR/app/build/outputs/apk"
+          echo "APK_DIR=$APK_DIR" >> $GITHUB_OUTPUT
+          find "$APK_DIR" -name "*.apk" -type f 2>/dev/null | head -5 || true
+
+      - name: Upload APK artifact
+        if: steps.detect.outputs.FOUND == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ideaforge-apk
+          path: ${{ steps.detect.outputs.PROJECT_DIR }}/app/build/outputs/apk/**/*.apk
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            ${{ steps.detect.outputs.PROJECT_DIR }}/**/build/reports/
+            ${{ steps.detect.outputs.PROJECT_DIR }}/**/*.log
+          if-no-files-found: ignore
+          retention-days: 3
