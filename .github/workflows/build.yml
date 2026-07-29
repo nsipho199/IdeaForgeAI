@@ -43,13 +43,31 @@ jobs:
         if: always()
         run: ./gradlew app:testDebugUnitTest --no-daemon --stacktrace 2>&1 || true
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: ideaforge-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: warn
           retention-days: 7
+
+      - name: Copy APK with clean name
+        run: |
+          cp app/build/outputs/apk/debug/*.apk IdeaForgeAI.apk
+          ls -lh IdeaForgeAI.apk
+
+      - name: Create Release and upload raw APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest Build
+          body: |
+            Auto-built APK from master@${{ github.sha }}
+          files: IdeaForgeAI.apk
+          prerelease: true
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload test reports
         if: always()
