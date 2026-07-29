@@ -57,17 +57,38 @@ jobs:
           ls -lh IdeaForgeAI.apk
 
       - name: Create Release and upload raw APK
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: Latest Build
-          body: |
-            Auto-built APK from master@${{ github.sha }}
-          files: IdeaForgeAI.apk
-          prerelease: true
-          make_latest: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Delete existing 'latest' release if it exists
+          existing=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/latest" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null)
+          if [ -n "$existing" ]; then
+            echo "Deleting existing release $existing"
+            curl -s -X DELETE -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/$existing"
+          fi
+          # Delete existing tag if present
+          curl -s -X DELETE -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/git/refs/tags/latest" 2>/dev/null || true
+          # Create new release
+          create_resp=$(curl -s -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"tag_name\":\"latest\",\"name\":\"Latest Build\",\"body\":\"Auto-built APK from master@${{ github.sha }}\",\"prerelease\":true,\"make_latest\":true}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases")
+          release_id=$(echo "$create_resp" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null)
+          echo "Release ID: $release_id"
+          if [ -n "$release_id" ]; then
+            # Upload the APK as a raw asset (not zipped)
+            curl -s -X POST \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Content-Type: application/vnd.android.package-archive" \
+              --data-binary @IdeaForgeAI.apk \
+              "https://uploads.github.com/repos/${{ github.repository }}/releases/$release_id/assets?name=IdeaForgeAI.apk"
+            echo ""
+            echo "APK uploaded to release"
+          else
+            echo "Failed to create release: $create_resp"
+          fi
 
       - name: Upload test reports
         if: always()
