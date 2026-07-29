@@ -5,9 +5,6 @@ on:
     branches: [master]
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
@@ -53,69 +50,6 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: warn
           retention-days: 7
-
-      - name: Copy APK with clean name
-        run: |
-          cp app/build/outputs/apk/debug/*.apk IdeaForgeAI.apk
-          ls -lh IdeaForgeAI.apk
-
-      - name: Publish raw APK as release asset
-        if: always()
-        run: |
-          python3 << 'PYEOF'
-import urllib.request, json, os
-
-token = os.environ.get('GITHUB_TOKEN', '')
-repo = os.environ.get('GITHUB_REPOSITORY', '')
-sha = os.environ.get('GITHUB_SHA', '')
-apk_path = 'IdeaForgeAI.apk'
-
-if not os.path.exists(apk_path) or not token or not repo:
-    print(f"APK exists={os.path.exists(apk_path)}, token={bool(token)}, repo={bool(repo)}")
-    exit(0)
-
-def api(method, url, data=None, file_path=None):
-    headers = {'Authorization': f'Bearer {token}'}
-    if file_path:
-        with open(file_path, 'rb') as f:
-            data_bytes = f.read()
-        headers['Content-Type'] = 'application/octet-stream'
-        headers['Content-Length'] = str(len(data_bytes))
-        req = urllib.request.Request(url, data=data_bytes, headers=headers, method=method)
-    elif data is not None:
-        headers['Content-Type'] = 'application/json'
-        req = urllib.request.Request(url, data=json.dumps(data).encode(), headers=headers, method=method)
-    else:
-        req = urllib.request.Request(url, headers=headers, method=method)
-    try:
-        resp = urllib.request.urlopen(req, timeout=30)
-        return json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        body = e.read().decode(errors='replace')[:500]
-        print(f"HTTP {e.code}: {body}")
-        return None
-    except Exception as e:
-        print(f"Error: {e}")
-        return None
-
-release = api('POST', f'https://api.github.com/repos/{repo}/releases', {
-    'tag_name': 'latest',
-    'name': 'Latest Build',
-    'body': f'Auto-built APK from master@{sha[:7]}',
-    'prerelease': True
-})
-
-if release and release.get('id'):
-    rid = release['id']
-    upload_url = f'https://uploads.github.com/repos/{repo}/releases/{rid}/assets?name=IdeaForgeAI.apk'
-    result = api('POST', upload_url, file_path=apk_path)
-    if result:
-        print(f"APK uploaded: {result.get('browser_download_url', '?')}")
-    else:
-        print("Upload failed")
-else:
-    print(f"Release not created (may already exist, skipping)")
-PYEOF
 
       - name: Upload test reports
         if: always()
