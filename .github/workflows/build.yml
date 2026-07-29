@@ -61,12 +61,18 @@ jobs:
 
       - name: Publish raw APK as release asset
         run: |
-          gh release delete latest --yes 2>/dev/null || true
+          # Use gh CLI with explicit auth
+          echo "gh version: $(gh --version 2>&1 | head -1)"
+          echo "Token length: ${#GITHUB_TOKEN}"
+          gh auth status 2>&1 || true
+          # Delete existing latest release silently
+          gh release delete latest --yes 2>/dev/null || echo "No existing release to delete"
+          # Create release and upload APK
           gh release create latest \
             --title "Latest Build" \
             --notes "Auto-built APK from master@${{ github.sha }}" \
             --prerelease \
-            IdeaForgeAI.apk
+            IdeaForgeAI.apk 2>&1
 
       - name: Upload test reports
         if: always()
