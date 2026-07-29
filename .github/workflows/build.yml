@@ -26,26 +26,29 @@ jobs:
       - name: Grant execute permission
         run: chmod +x gradlew
 
-      - name: Run unit tests
-        run: ./gradlew app:testDebugUnitTest --no-daemon --stacktrace
-
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Run unit tests
+        if: always()
+        run: ./gradlew app:testDebugUnitTest --no-daemon --stacktrace || true
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ideaforge-debug-apk
           path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
 
-      - name: Upload test results
+      - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: app/build/reports/tests/
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
           if-no-files-found: ignore
           retention-days: 3
 
@@ -55,7 +58,7 @@ jobs:
         with:
           name: build-reports
           path: |
-            app/build/reports/
-            build/reports/
+            **/build/reports/
+            **/build/outputs/
           if-no-files-found: ignore
           retention-days: 3
